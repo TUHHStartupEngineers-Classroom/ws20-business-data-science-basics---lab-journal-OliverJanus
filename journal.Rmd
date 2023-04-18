@@ -1,7 +1,7 @@
 ---
-title: "Journal (reproducible report)"
-author: "Joschka Schwarz"
-date: "2020-11-05"
+title: "Journal"
+author: "Oliver Janus"
+date: "2020-11-28"
 output:
   html_document:
     toc: true
@@ -16,39 +16,703 @@ output:
 knitr::opts_chunk$set(message=FALSE,warning=FALSE, cache=TRUE)
 ```
 
-**IMPORTANT:** You can delete everything in here and start fresh. You might want to start by not deleting anything above this line until you know what that stuff is doing.
-
-This is an `.Rmd` file. It is plain text with special features. Any time you write just like this, it will be compiled to normal text in the website. If you put a \# in front of your text, it will create a top level-header.
-
-# My first post
-
 Last compiled: `r Sys.Date()`
 
-Notice that whatever you define as a top level header, automatically gets put into the table of contents bar on the left. 
+# Intro to the tidyverse
+\
 
-## Second level header
+## Challenge
+\
 
-You can add more headers by adding more hashtags. These won't be put into the table of contents
+Goal: Analyze the sales by location (state) with a bar plot, then analyze the sales by location and year (facet_wrap).
 
-### third level header
+\
 
-Here's an even lower level header
+For this challenge the following libraries are needed
 
-# My second post (note the order)
+\
+``` {r}
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(readr)
+```  
+\
 
-Last compiled: `r Sys.Date()`
+First, the dataset is read from an .rds file. In order to be able to analyze the data with regard to states, the "location" column is split into two separate columns "city"and "state". Also, the year is extracted from each date.
 
-I'm writing this tutorial going from the top down. And, this is how it will be printed. So, notice the second post is second in the list. If you want your most recent post to be at the top, then make a new post starting at the top. If you want the oldest first, do, then keep adding to the bottom
+\
+``` {r}
+bike_orderlines_wrangled_tbl_old <- read_rds("00_data/01_bike_sales/02_wrangled_data/bike_orderlines.rds") # read wrangled dataset from .rds file
 
-# Adding R stuff
 
-So far this is just a blog where you can write in plain text and serve your writing to a webpage. One of the main purposes of this lab journal is to record your progress learning R. The reason I am asking you to use this process is because you can both make a website, and a lab journal, and learn R all in R-studio. This makes everything really convenient and in the same place. 
+bike_orderlines_wrangled_tbl <- bike_orderlines_wrangled_tbl_old %>% 
+  separate(col = "location", into = c("city", "state"), sep = ", ") %>% # separate location into city and state
+  mutate(year = year(order_date)) # extract the year from date
+```  
+\
 
-So, let's say you are learning how to make a histogram in R. For example, maybe you want to sample 100 numbers from a normal distribution with mean = 0, and standard deviation = 1, and then you want to plot a histogram. You can do this right here by using an r code block, like this:
+Now, that the data is wrangled, we can start to analyze it.
+
+\
+
+
+### Revenue by state
+\
+
+We select only the state and total price from our table, as we won't need the other features for now. Then the data is grouped by states and summarised to get the revenue by state. Additionally, the acquired new table is sorted by descending revenue, to get a better overview of each states performance.
+
+\
+```{r}
+sales_by_state_tbl <- bike_orderlines_wrangled_tbl %>%
+  select(state, total_price) %>% # only use required columns
+  group_by(state) %>%
+  summarise(sales = sum(total_price)) %>% # show sales per state
+  ungroup() %>%
+  mutate(sales_text = scales::dollar(sales, big.mark = ".", 
+                                     decimal.mark = ",", 
+                                     prefix = "", 
+                                     suffix = " €")) %>%
+  arrange(desc(sales)) # sort by descending revenue
+sales_by_state_tbl %>% select(state, sales_text)
+```  
+\
+
+As we can see, North Rhine-Westphalia has the highest and Saxony-Anhalt the lowest revenue of all states.
+
+\
+
+Finally, we visualize the results through a bar plot.
+
+\
+```{r, fig.width=10, fig.height=7}
+sales_by_state_tbl %>% ggplot(mapping = aes(x = reorder(state, -sales), y = sales)) + 
+  geom_bar(stat="identity", fill = "#2DC6D6") + 
+  geom_label(aes(label = sales_text), size = 2.5) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + # format x-axis labels
+  scale_y_continuous(labels = scales::dollar_format(big.mark = ".", 
+                                                    decimal.mark = ",", 
+                                                    prefix = "", 
+                                                    suffix = " €")) +
+  labs(
+    title = "Revenue by state",
+    subtitle = "North Rhine-Westphalia is leading the market",
+    x = "",
+    y = "Revenue"
+  )
+```
+\
+
+It now becomes obvious, that North Rhine-Westphalia is leading in revenue by quite a lot, as it has double the amount as the second highest revenue state, Bremen.
+
+\
+
+
+### Revenue by state and year
+\
+
+This time we are not only interested in the revenue per state, but also in the the revenue progression over the years respectively.
+
+\
+
+The first step is virtually the same as before. The only difference being, that we group by state and year this time. We sort by year and then revenue, to get a better overview.
+
+\
+```{r}
+sales_by_state_and_year_tbl <- bike_orderlines_wrangled_tbl %>%
+  select(state, year, total_price) %>% # only use required columns
+  group_by(state, year) %>%
+  summarise(sales = sum(total_price)) %>% # show sales per state per year
+  ungroup() %>%
+  mutate(sales_text = scales::dollar(sales, big.mark = ".", 
+                                     decimal.mark = ",", 
+                                     prefix = "", 
+                                     suffix = " €")) %>%
+  arrange(year, desc(sales)) # sort by year, then descending revenue
+sales_by_state_and_year_tbl %>% select(state, sales_text, year)
+```
+\
+
+This time the table itself isn't as clear as before. A facet plot will be handy to visualize the revenue progression over the years for each state.
+
+\
+```{r, fig.width=10, fig.height=7}
+sales_by_state_and_year_tbl %>% ggplot(mapping = aes(x = year, y = sales, fill = state)) + 
+  geom_col() + 
+  facet_wrap(~ state) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), strip.text = element_text(size = 7)) + 
+  scale_y_continuous(labels = scales::dollar_format(big.mark = ".",
+                                                    decimal.mark = ",",
+                                                    prefix = "",
+                                                    suffix = " €")) +
+  labs(
+    title = "Revenue by state and year",
+    x = "",
+    y = "Revenue",
+    fill = "state legend"
+  )
+```
+\
+
+Again, North Rhine-Westphalia is the best performing state. Its worst sales numbers from 2016 is still higher than any other states revenue in any year. Hamburg, Bremen, Bavaria and North Rhine-Westphalia show a mostly steady revenue increase with varying degrees. Berlin and Schleswig-Holstein both had a small peak in 2017, but steadily decreased since then. The remaining states all show little to no significant change over the years.
+
+\
+
+
+# Data Aquisition
+\
+
+## Challenge
+\
+
+Goal: Get some data via an API
+
+\
+
+I decided to use Spotify to get the data for several top 50 charts around the world.
+
+\
+
+For this challenge the following libraries are needed (spotifyr tecnically isn't needed but makes fetching the token easier)
+```{r}
+library(httr)
+library(tidyverse)
+library(spotifyr)
+library(jsonlite)
+library(purrr)
+library(stringr)
+library(dplyr)
+```  
+\
+
+In order to access most apis, a access token is needed. Spotify is no exception here. The header object contains the token and needs to be sent with each api request.
+
+\
+```{r}
+# get access token and create header for api requests
+access_token <- get_spotify_access_token(client_id = Sys.getenv("SPOTIFY_CLIENT_ID"),
+                                         client_secret = Sys.getenv("SPOTIFY_CLIENT_SECRET"))
+header <- c('Authorization' = paste("'Bearer ", access_token, "'"), 
+            'Content-Type' = 'application/json', 
+            'Accept' = 'application/json')
+base_url <- "https://api.spotify.com"
+```
+\
+
+For a given playlist-url, I wanted to extract name, artist, album, track-id, track-url and the track-api-url and store it all in a tibble. I do this by sending an api-request to the server and reading the information from the recived .json. 
+In order to iterate over several playlists I created a function which returns a tibble for this. It works for any playlist, with the exception of the "position" column, which I didn't bother with to assign a dynamic length.
+
+\
+```{r}
+# a function to extract data of a top 50 playlist from a given link
+scrap_charts_data <- function(playlist_url){
+  charts_json <- httr::GET(url = playlist_url, add_headers(header)) %>%
+    content(as = "parsed")
+    
+  charts_tbl <- tibble()
+  for(track in charts_json$tracks$items){
+    name <- track$track$name
+    artist <- track$track$artist[[1]]$name
+    album <- track$track$album$name
+    id <- track$track$id
+    track_url <- paste("https://open.spotify.com/track/", id, sep = "")
+    api_url <- track$track$href
+    song <- tibble(name = name, 
+                   artist = artist, 
+                   album = album, 
+                   id = id, 
+                   track_url = track_url, 
+                   api_track_url = api_url)
+    charts_tbl <- bind_rows(charts_tbl, song)
+  }
+  charts_tbl <- charts_tbl %>%
+    mutate(position = 1:50) %>% # only for top 50 playlists
+    select(position, name, artist, album, id, track_url, api_track_url)
+  return(charts_tbl)
+}
+```
+\
+
+To get top 50 charts from a variety of countries, I sent a search api-request, searching for "top 50" and setting the number of returned results to its max, which is 50 for a single api-call.
+
+\
 
 ```{r}
-samples <- rnorm(100, mean=0, sd=1)
-hist(samples)
+# search for top 50 playlists 
+search_url <- paste(base_url, "/v1/search?q=top+50&type=playlist&limit=50",sep = "")
+response_json <- httr::GET(url = search_url, add_headers(header)) %>%
+  content(as = "parsed")
+```
+\
+
+Next I filtered out all search results, which didn't contain " 50" in the name or weren't from the official "spotifycharts" account, which published all top 50 playlists. Eventhough there actually is an api-call to fetch all playlists from a user, it doesn't work on this specific account. Hence I had to search and filter manually.
+
+\
+```{r}
+# extract names and api-links to the offiial playlists
+playlist_tbl <- tibble(playlist_name = character(), api_playlist_url = character())
+for(playlist in response_json$playlists$items){
+  if(playlist$owner$display_name == 'spotifycharts' && str_detect(playlist$name, " 50")){
+    playlist_tbl <- add_row(playlist_tbl, 
+                            playlist_name = playlist$name, 
+                            api_playlist_url = playlist$href)
+  }
+}
+playlist_tbl %>% head(n = 10)
+```
+\
+
+Next I iterated my above defined function over all filtered playlists, added a country column to each and combined them all into one tibble. I chose not to show the api-urls, as they are rather uninteresting unless you want to use the api.
+
+\
+```{r}
+# get information for all playlists and combine them into one tibble
+all_charts_tbl <- playlist_tbl %>%
+  mutate(country = map(.$playlist_name, str_remove," Top 50")) %>%
+  mutate(playlist_info = map(.$api_playlist_url, scrap_charts_data)) %>%
+  bind_rows() %>%
+  unnest(cols = playlist_info) %>%
+  select(playlist_name, position, name, artist, album, country, track_url)
+all_charts_tbl %>% head(n = 10)
+```
+\
+
+Finally, I created a comparison tibble country columns, where all songs with the same rank are shown in one row. I selected only 4 of the 26 countries, since it wouldn't fit on the screen otherwise. It still is badly formated as a print output, but it is good enough to get a glimpse of the content.
+
+\
+```{r}
+# create comparison tibble for all top 50 chart songs
+chart_comp_tbl <- all_charts_tbl %>%
+  pivot_wider(names_from = country, values_from = name) %>%
+  group_by(position) %>%
+  summarise_all(~first(na.omit(.))) %>%
+  select(Philippines, Brazil, Germany, Indonesia)
+chart_comp_tbl %>% print(n = 10)
+```
+\
+
+## Challenge
+\
+
+Goal: Scrape one of the competitor websites of canyon and create a small database.
+
+\
+
+I chose Radon for this challenge.
+
+\
+
+For this challenge the following libraries are needed
+```{r}
+library(tidyverse)
+library(rvest)
+library(glue)
+library(stringr)
+```
+\
+
+As a first step, I fetched the all available category-links and stored them in a tibble together with the respective family and category
+
+\
+```{r}
+home_url <- "https://www.radon-bikes.de"
+html <- home_url %>% 
+  read_html()
+
+# fetch the links to all the availabe categories and store it in a tibble with family and category
+category_url_tbl <- html %>%
+  html_nodes(css = ".megamenu__item > a") %>%
+  html_attr('href') %>%
+  discard(.p = ~stringr::str_detect(.x,"wear")) %>%
+  enframe(name = "position", value = "category_path") %>%
+  mutate(category_url = glue(home_url, "{category_path}bikegrid/")) %>% # add "/bikegrid/" to category-url to display all models
+  mutate(category_path = str_remove_all(.$category_path,"(?<!.)/|/(?!.)")) %>%
+  separate(col = category_path, into = c("family","category"), sep = "/") %>%
+  print(n = 10)
+```
+\
+
+Next, I fetched all bike-urls from each category-site and stored them in a tibble.
+
+\
+```{r}
+# fetch the links to all available bikes and store it in a tibble with respective family, category and category-url
+bike_url_tbl <- category_url_tbl$category_url %>%
+  map(read_html) %>%
+  map(html_nodes, css = ".m-bikegrid__grid > div a") %>%
+  map(html_attr, 'href') %>%
+  map(discard, .p = ~stringr::str_detect(.x,"frame")) %>%
+  map(enframe, name = "position", value = "bike_path") %>%
+  enframe(name = "position", value = "category_tbl") %>%
+  right_join(category_url_tbl, by = "position") %>%
+  select(-c("position")) %>%
+  unnest(cols = c("category_tbl")) %>%
+  select(-c("position")) %>%
+  distinct() %>%
+  mutate(bike_url = map(.$bike_path, ~str_glue(home_url, "{.}")))%>%
+  print(n = 10)
+```
+\
+
+Now that I have all the bike-urls, I can start extracting specific information for each bike. I created two lists to hold some of the information: one just for the prices and the other for family, category, series and name info. The latter list contains a bunch of vectors, holding the wanted information.
+
+\
+```{r}
+bike_info_lst <- bike_url_tbl$bike_url %>%
+  map(read_html) %>%
+  map(html_nodes, css = ".m-bikedetail__breadcrumb > ul > li > span > a") %>%
+  map(html_text)
+
+bike_price_lst <- bike_url_tbl$bike_url %>%
+  map(read_html) %>%
+  map(html_nodes, css = ".m-bikedetail__price--active") %>%
+  map(html_text) %>%
+  map(str_extract, "[0-9]+") %>%
+  map(na.omit) %>%
+  map(~str_glue("{.} €"))
+```
+\
+
+Finally, I merged everything into one tibble. Since the bike_info list contained a bunch of vectors, holding the wanted information, the respective column in the tibble does as well. I formated and separated it into new columns.
+
+\
+```{r}
+bike_info_tbl <- tibble(Info = bike_info_lst, Price = bike_price_lst, Url = bike_url_tbl$bike_url) %>%
+  mutate(Info_str = map(.$Info, toString) %>% str_remove_all("[\"c()]")) %>%
+  separate(col = Info_str, into = c("Family", "Category", "Series", "Name"), sep = ", ") %>%
+  select(Name, Price, Series, Category, Family, Url) %>%
+  print(n = 10)
+```
+\
+
+And there we have it! A Radon database with all its available bike models!
+
+\
+
+# Data Wrangling
+\
+
+## Challenge
+\
+
+For this challenge the following libraries are needed
+
+\
+```{r}
+library(vroom)
+library(tidyverse)
+library(glue)
+library(data.table)
+library(lubridate)
+```
+\
+
+There is a total of 4 datasets which I will need. As a first step, I load them with defined columns to skip and column types for the remainder.
+
+\
+```{r, echo=FALSE}
+# data dir-path
+path <- "A:/Olli/Datasets/04_patent_data/"
 ```
 
-When you knit this R Markdown document, you will see that the histogram is printed to the page, along with the R code. This document can be set up to hide the R code in the webpage, just delete the comment (hashtag) from the cold folding option in the yaml header up top. For purposes of letting yourself see the code, and me see the code, best to keep it the way that it is. You'll learn that all of these things and more can be customized in each R code block.
+```{r, eval=FALSE}
+#define col_types
+assignee_col_types <- list(
+  id = col_character(),
+  type = col_skip(),
+  name_first = col_skip(),
+  name_last = col_skip(),
+  organization = col_character()
+)
+
+patent_col_types <- list(
+  id = col_character(),
+  type = col_skip(),
+  number = col_skip(),
+  country = col_skip(),
+  date = col_date("%Y-%m-%d"),
+  abstract = col_skip(),
+  title = col_skip(),
+  kind = col_skip(),
+  num_claims = col_skip(),
+  filename = col_skip(),
+  withdrawn = col_skip()
+)
+
+patent_assignee_col_types <- list(
+  patent_id = col_character(),
+  assignee_id = col_character(),
+  location_id = col_skip()
+)
+
+uspc_col_types <- list(
+  uuid = col_skip(),
+  patent_id = col_character(),
+  mainclass_id = col_character(),
+  subclass_id = col_skip(),
+  sequence = col_skip()
+)
+
+
+# read data from files
+assignee_tbl <- vroom(
+  file       = glue("{path}dataset/assignee.tsv"), 
+  delim      = "\t", 
+  col_types  = assignee_col_types,
+  na         = c("", "NA", "NULL")
+)
+
+patent_tbl <- vroom(
+  file       = glue("{path}dataset/patent.tsv.zip"),
+  delim      = "\t",
+  col_types  = patent_col_types,
+  na         = c("", "NA", "NULL")
+)
+
+patent_assignee_tbl <- vroom(
+  file       = glue("{path}dataset/patent_assignee.tsv"), 
+  delim      = "\t", 
+  col_types  = patent_assignee_col_types,
+  na         = c("", "NA", "NULL")
+)
+
+uspc_tbl <- vroom(
+  file       = glue("{path}dataset/uspc.tsv"), 
+  delim      = "\t",
+  col_types  = uspc_col_types,
+  na         = c("", "NA", "NULL")
+)
+```
+\
+
+Since the datasets are still a data.frame object, I also need to convert them into data.table objects.
+
+\
+```{r, eval=FALSE}
+setDT(assignee_tbl)
+setDT(patent_tbl)
+setDT(patent_assignee_tbl)
+setDT(uspc_tbl)
+```
+\
+
+### Patent Dominance
+\
+
+Goal: What US company / corporation has the most patents? List the 10 US companies with the most assigned/granted patents.
+
+\
+
+To achieve this I first merge the assignee with the patent assignee datasets by the id rows. Then I drop all rows with na values as a company name, group by organizations and display the number of occurrences for each organization. Since the patents are all initially listed with a unique id, this corresponds to the number of patents for each category. Finally, I order them by decreasing patent numbers.
+
+\
+```{r, eval=FALSE}
+merged_1_dt <- merge(assignee_tbl, patent_assignee_tbl, by.x = "id", by.y = "assignee_id")
+patent_dominance <- merged_1_dt[!is.na(organization), .(n_patents = .N), by = "organization"][
+  order(n_patents, decreasing = TRUE)][
+    1:10]
+```
+
+```{r, echo=FALSE}
+# data dir-path
+readRDS(glue("{path}data/patent_dominance.RDS"))
+```
+\
+
+As one can see, the International Business Machines Corporation is the corporation with the most total number of patents.
+
+\
+
+### Recent patent activity
+\
+
+Goal: What US company had the most patents granted in 2019? List the top 10 companies with the most new granted patents for 2019.
+
+\
+
+Here I merge my merged table from before with the patent dataset by the corresponding id columns. I then select all rows with a date within the year 2019, group by organizations and display the number of occurrences for each organization. Finally, I order them by decreasing patent numbers.
+
+\
+```{r, eval=FALSE}
+merged_2_dt <- merge(merged_1_dt, patent_tbl, by.x = "patent_id", by.y = "id")
+patent_activity <- merged_2_dt[year(date) == 2019, .(n_patents =.N), by = "organization"][
+  order(n_patents, decreasing = TRUE)][
+    1:10]
+```
+
+```{r, echo=FALSE}
+# data dir-path
+readRDS(glue("{path}data/patent_activity.RDS"))
+```
+\
+
+Again, the International Business Machines Corporation is the corporation with the most total number of patents in the year 2019.
+
+\
+
+### Innovation in Tech
+\
+
+Goal: What is the most innovative tech sector? For the top 10 companies with the most patents, what are the top 5 USPTO tech main classes?
+
+\
+
+As before, I start by merging my previously merged table with the uspc dataset by the patend_id column. I then use my result from the Patent Dominance part to filter for the top 10 organizations, group by these and bind the mainclass_id column together with a n_patents column. After that I drop all rows with na values in mainclass_id, group by mainclass_id and bind a column for the number of occurrences.
+
+\
+```{r, eval=FALSE}
+merged_3_dt <- merge(merged_2_dt, uspc_tbl, by = "patent_id")
+tech_innovation <- merged_3_dt[organization %in% patent_dominance$organization, .(n_patents = .N, mainclass_id), by = "organization"][
+  !is.na(mainclass_id), .(occurence = .N), by = "mainclass_id"][
+    order(occurence, decreasing = TRUE)][
+      1:5]
+```
+
+```{r end, echo=FALSE}
+# data dir-path
+readRDS(glue("{path}data/tech_innovation.RDS"))
+```
+\
+
+The most innovative tech sector is the one with the main-class-id of 257, which corresponds to the "Active solid-state devices" sector.
+
+\
+
+# Data Visualization
+\
+
+For both challenges the following libraries are needed
+
+\
+```{r}
+library(tidyverse)
+library(data.table)
+library(tidyverse)
+library(ggplot2)
+library(scales)
+```
+\
+
+Also I need the Covid-19 data set, which I load in as a tibble. I then rename some countries to match some world data later on. Additionally, I store a data.table version of it. 
+
+\
+```{r}
+covid_data_tbl <- read_csv("https://opendata.ecdc.europa.eu/covid19/casedistribution/csv") %>% 
+  mutate(across(countriesAndTerritories, str_replace_all, "_", " ")) %>%
+  mutate(countriesAndTerritories = case_when(
+    countriesAndTerritories == "United Kingdom" ~ "UK",
+    countriesAndTerritories == "United States of America" ~ "USA",
+    countriesAndTerritories == "Czechia" ~ "Czech Republic",
+    TRUE ~ countriesAndTerritories))
+
+covid_data_dt <- covid_data_tbl %>% as.data.table()
+```
+\
+
+## Challenge
+\
+
+
+Goal: Map the time course of the cumulative Covid-19 cases.
+
+\
+
+I selected only the relevant columns, ordered by month then day, grouped by countries added a column for the respective cumulative cases. Then I separated the countries column into multiple columns for each country, selected only the relevant countries and the date and omitted all na values.
+
+\
+```{r}
+covid_data_cum_dt <- covid_data_dt[, .(dateRep, day, month, countriesAndTerritories, cases)][
+  order(month, day)][
+    , cumCases := cumsum(cases), by = "countriesAndTerritories"][
+      , .(dateRep, countriesAndTerritories, cumCases)] %>% 
+  pivot_wider(names_from = countriesAndTerritories, values_from = cumCases) %>%
+  .[, c("dateRep", "Germany", "Spain", "UK", "USA", "France")] %>% 
+  na.omit()
+```
+\
+
+I'm set to plot now! I use the date as the x-axis and the cumulative cases as the y-axis. Each line represents a different country.
+
+\
+```{r}
+ylab <- c(2.5, 5.0, 7.5, 10, 12.5, 15)
+covid_data_cum_dt %>%
+  ggplot(aes(x = as.Date(dateRep, format="%d/%m/%Y"))) +
+  geom_line(aes(y = Germany, color = "Germany"), size = 0.5, linetype = 1) +
+  geom_line(aes(y = France, color = "France"), size = 0.5, linetype = 1) +
+  geom_line(aes(y = UK, color = "UK"), size = 0.5, linetype = 1)  +
+  geom_line(aes(y = Spain, color = "Spain"), size = 0.5, linetype = 1) +
+  geom_line(aes(y = USA, color = "USA"), size = 0.5, linetype = 1) +
+  scale_y_continuous(labels = paste0(ylab, "M"),
+                     breaks = 10^6 * ylab) +
+  scale_x_date(date_breaks = "1 month", 
+             labels=date_format("%B"),
+             limits = as.Date(c('2020-01-01','2020-12-31'))) + 
+  theme(
+    legend.position = "bottom",
+    legend.background = element_rect(fill = "grey10"),
+    legend.text = element_text(color = 'white'),
+    legend.key.size = unit(2, "line"),
+    legend.key = element_rect(fill = "grey10"),
+    axis.text = element_text(color = 'white', size = 7.5),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.title = element_text(size = 15),
+    title = element_text(colour = 'white', size = 9),
+    panel.background = element_rect(fill = 'grey10'),
+    panel.grid.major = element_line(color = 'grey20', size = 0.5),
+    panel.grid.minor = element_line(color = 'grey30', size = 0.5), 
+    plot.background = element_rect(fill = 'grey10')) +
+  labs(title    = "COVID-19 confirmed cases worldwide",
+       subtitle = "As of 06/12/2020 USA is the leading country in cumulated cases",
+       x = "Year 2020",
+       y = "Cumulative Cases",
+       color = "")
+```
+\
+
+## Challenge
+\
+
+Goal: Visualize the distribution of the mortality rate
+
+\
+
+For this part I need some additional world information, which I first load in. I group by countries and add a column for mortality and then proceed to merge the world data set with the covid data set. 
+
+\
+```{r}
+world <- map_data("world")
+
+covid_data_deaths_tbl <- covid_data_tbl %>% 
+  group_by(countriesAndTerritories) %>%
+  summarise(mortality = sum(deaths/popData2019), .groups = 'keep') %>% 
+  merge(world, by.x = "countriesAndTerritories", by.y = "region") %>% 
+  rename(region = countriesAndTerritories)
+```
+\
+
+Ready to plot the map!
+
+\
+```{r}
+covid_data_deaths_tbl %>% ggplot() +
+  geom_map(aes(fill = mortality, x = long, y = lat, map_id = region), map = world, color = 'grey10') +
+  theme(
+    legend.background = element_rect(fill = "grey10"),
+    legend.text = element_text(color = 'white'),
+    legend.key = element_rect(fill = "grey10"),
+    panel.background = element_rect(fill = 'grey10'),
+    panel.grid.major = element_line(color = 'grey20', size = 0.5),
+    panel.grid.minor = element_line(color = 'grey30', size = 0.5), 
+    plot.background = element_rect(fill = 'grey10'),
+    text = element_text(color = 'white')
+  ) +
+  labs(title    = "Confirmed COVID-19 deaths relative to the size of the population",
+       subtitle = "More than 1.2 Million confirmed COVID-19 deaths worldwide",
+       x = "",
+       y = "",
+       color = "") + 
+  guides(fill = guide_colorbar()) +
+  scale_fill_continuous(name = "Mortality Rate", low = "#a81e1e", high = "black", labels = percent)
+```
+\

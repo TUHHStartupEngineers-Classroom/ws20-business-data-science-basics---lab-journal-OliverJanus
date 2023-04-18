@@ -36,3 +36,8 @@ vignettes/*.pdf
 *.knit.md
 
 # R Environment Variables
+.Renviron
+00_data/03_loan_data/Acquisition_2019Q1.txt
+00_data/03_loan_data/Performance_2019Q1.txt
+docs/00_data/03_loan_data/Acquisition_2019Q1.txt
+docs/00_data/03_loan_data/Performance_2019Q1.txt
